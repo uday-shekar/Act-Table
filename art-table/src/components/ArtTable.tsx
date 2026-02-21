@@ -1,91 +1,171 @@
-import { useEffect, useState } from 'react';
-import { DataTable } from 'primereact/datatable';
-import { Column } from 'primereact/column';
-import { fetchArtworks } from '../api/artworksApi';
-import type { Artwork } from '../types/artwork';
+import { useEffect, useState, useRef } from "react";
+import { DataTable } from "primereact/datatable";
+import { Column } from "primereact/column";
+import { fetchArtworks } from "../api/artworksApi";
+import type { Artwork } from "../types/artwork";
+import HeaderSelectPopup from "./HeaderSelectPopup";
 
 const ROWS_PER_PAGE = 12;
 
 const ArtTable = () => {
-  // 📄 current page data ONLY
   const [artworks, setArtworks] = useState<Artwork[]>([]);
-  const [page, setPage] = useState<number>(1);
-  const [totalRecords, setTotalRecords] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [page, setPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-  // 🔑 persistent selection (store ONLY IDs)
+  /*Persistent selection (IDS only) */
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  // 📡 server-side pagination fetch
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const response = await fetchArtworks(page, ROWS_PER_PAGE);
-        setArtworks(response.data);
-        setTotalRecords(response.pagination.total);
-      } catch (error) {
-        console.error('Failed to fetch artworks', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  /*Target count (NO prefetching) */
+  const [targetSelectCount, setTargetSelectCount] = useState<number | null>(null);
 
-    loadData();
+  const iconRef = useRef<HTMLDivElement | null>(null);
+  const [showPopup, setShowPopup] = useState(false);
+
+  /* SERVER SIDE PAGINATION*/
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const res = await fetchArtworks(page, ROWS_PER_PAGE);
+      setArtworks(res.data);
+      setTotalRecords(res.pagination.total);
+      setLoading(false);
+    };
+    load();
   }, [page]);
 
-  // ✅ selected rows ONLY for current page
-  const selectedRows = artworks.filter(art =>
-    selectedIds.has(art.id)
-  );
+  /* AUTO SELECT (SAFE)*/
+  useEffect(() => {
+    if (!targetSelectCount) return;
+    if (selectedIds.size >= targetSelectCount) {
+      setTargetSelectCount(null);
+      return;
+    }
 
-  // 📄 paginator handler (SERVER-SIDE)
-  const onPageChange = (event: any) => {
-    const nextPage =
-      Math.floor(event.first / event.rows) + 1;
-    setPage(nextPage);
-  };
-
-  // ☑️ selection handler (persistent across pages)
-  const onSelectionChange = (event: { value: Artwork[] }) => {
     setSelectedIds(prev => {
-      const updated = new Set(prev);
+      const next = new Set(prev);
 
-      // ❌ remove current page IDs
-      artworks.forEach(art => updated.delete(art.id));
+      for (const row of artworks) {
+        if (next.size >= targetSelectCount) break;
+        next.add(row.id);
+      }
 
-      // ✅ add newly selected IDs
-      event.value.forEach(art => updated.add(art.id));
+      return next;
+    });
+  }, [artworks, targetSelectCount]);
 
-      return updated;
+  /*PAGE SAFE SELECTION*/
+  const selectedRows = artworks.filter(a => selectedIds.has(a.id));
+
+  const onSelectionChange = (e: any) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      artworks.forEach(a => next.delete(a.id));
+      e.value.forEach((a: Artwork) => next.add(a.id));
+      return next;
     });
   };
 
+  /* SELECT N ROWS (SAFE) */
+  const selectRowsAcrossPages = (count: number) => {
+    setShowPopup(false);
+    setTargetSelectCount(count);
+  };
+
+  const onPageChange = (e: any) => setPage(e.page + 1);
+
+  /*ICON HEADER */
+  const iconHeader = (
+    <div ref={iconRef} style={{ display: "flex", justifyContent: "center" }}>
+      <i
+        className="pi pi-chevron-down"
+        style={{ cursor: "pointer" }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowPopup(v => !v);
+        }}
+      />
+      {showPopup && (
+        <HeaderSelectPopup
+          anchorRef={iconRef}
+          onSelect={selectRowsAcrossPages}
+          onClose={() => setShowPopup(false)}
+        />
+      )}
+    </div>
+  );
+
+  const paginatorLeft = (
+    <span className="p-paginator-current">
+      {(page - 1) * ROWS_PER_PAGE + 1} to{" "}
+      {Math.min(page * ROWS_PER_PAGE, totalRecords)} of {totalRecords} entries
+    </span>
+  );
+
   return (
-    <DataTable 
-      value={artworks}
-      lazy
-      paginator
-      rows={ROWS_PER_PAGE}
-      totalRecords={totalRecords}
-      first={(page - 1) * ROWS_PER_PAGE}
-      loading={loading}
-      dataKey="id"
-      selection={selectedRows}
-      onSelectionChange={onSelectionChange}
-      onPage={onPageChange}
-      stripedRows
-      showGridlines
-      responsiveLayout="scroll"
-    >
-      <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />
-      <Column field="title" header="TITLE" />
-      <Column field="place_of_origin" header="PLACE OF ORIGIN" />
-      <Column field="artist_display" header="ARTIST" />
-      <Column field="inscriptions" header="INSCRIPTIONS" />
-      <Column field="date_start" header="START DATE" />
-      <Column field="date_end" header="END DATE" />
-    </DataTable>
+    <div style={{ margin: 20 }}>
+      {/* INFO OUTSIDE CARD */}
+      <div style={{ marginBottom: 8, fontWeight: 500 }}>
+        Selected: {selectedIds.size} rows
+      </div>
+
+      {/* TABLE CARD */}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 10,
+          background: "#fff",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+          overflow: "hidden",
+        }}
+      >
+        <DataTable
+          value={artworks}
+          lazy
+          paginator
+          rows={ROWS_PER_PAGE}
+          totalRecords={totalRecords}
+          first={(page - 1) * ROWS_PER_PAGE}
+          loading={loading}
+          dataKey="id"
+          selection={selectedRows}
+          onSelectionChange={onSelectionChange}
+          onPage={onPageChange}
+          stripedRows
+          paginatorLeft={paginatorLeft}
+          paginatorTemplate={{
+            layout: "PrevPageLink PageLinks NextPageLink",
+            PrevPageLink: (options) => (
+              <button
+                className="p-link"
+                onClick={options.onClick}
+                disabled={options.disabled}
+              >
+                Previous
+              </button>
+            ),
+            NextPageLink: (options) => (
+              <button
+                className="p-link"
+                onClick={options.onClick}
+                disabled={options.disabled}
+              >
+                Next
+              </button>
+            ),
+          }}
+        >
+          <Column selectionMode="multiple" style={{ width: "3rem" }} />
+          <Column header={iconHeader} style={{ width: "2.5rem" }} />
+          <Column field="title" header="TITLE" />
+          <Column field="place_of_origin" header="PLACE OF ORIGIN" />
+          <Column field="artist_display" header="ARTIST" />
+          <Column field="inscriptions" header="INSCRIPTIONS" />
+          <Column field="date_start" header="START DATE" />
+          <Column field="date_end" header="END DATE" />
+        </DataTable>
+      </div>
+    </div>
   );
 };
 
