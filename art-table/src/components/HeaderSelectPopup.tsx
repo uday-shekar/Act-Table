@@ -1,4 +1,5 @@
-import { useState, RefObject } from "react";
+import { useState } from "react";
+import type { RefObject } from "react";
 
 interface Props {
   anchorRef: RefObject<HTMLDivElement | null>;

@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from "react";
-import { DataTable } from "primereact/datatable";
 import { Column } from "primereact/column";
 import { fetchArtworks } from "../api/artworksApi";
 import type { Artwork } from "../types/artwork";
 import HeaderSelectPopup from "./HeaderSelectPopup";
+import { DataTable } from "primereact/datatable";
 
 const ROWS_PER_PAGE = 12;
 
@@ -13,16 +13,16 @@ const ArtTable = () => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  /*Persistent selection (IDS only) */
+  /* Persistent selection */
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  /*Target count (NO prefetching) */
+  /* target auto-select count */
   const [targetSelectCount, setTargetSelectCount] = useState<number | null>(null);
 
   const iconRef = useRef<HTMLDivElement | null>(null);
   const [showPopup, setShowPopup] = useState(false);
 
-  /* SERVER SIDE PAGINATION*/
+  /* SERVER PAGINATION */
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -34,9 +34,10 @@ const ArtTable = () => {
     load();
   }, [page]);
 
-  /* AUTO SELECT (SAFE)*/
+  /* AUTO SELECT SAFE */
   useEffect(() => {
     if (!targetSelectCount) return;
+
     if (selectedIds.size >= targetSelectCount) {
       setTargetSelectCount(null);
       return;
@@ -52,29 +53,34 @@ const ArtTable = () => {
 
       return next;
     });
-  }, [artworks, targetSelectCount]);
+  }, [artworks, targetSelectCount, selectedIds.size]);
 
-  /*PAGE SAFE SELECTION*/
+  /* CURRENT PAGE SELECTION */
   const selectedRows = artworks.filter(a => selectedIds.has(a.id));
 
   const onSelectionChange = (e: any) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
+
       artworks.forEach(a => next.delete(a.id));
       e.value.forEach((a: Artwork) => next.add(a.id));
+
       return next;
     });
   };
 
-  /* SELECT N ROWS (SAFE) */
+  /* SELECT N ROWS */
   const selectRowsAcrossPages = (count: number) => {
     setShowPopup(false);
     setTargetSelectCount(count);
   };
 
-  const onPageChange = (e: any) => setPage(e.page + 1);
+  /* ⭐ IMPORTANT FIX HERE */
+  const onPageChange = (e: any) => {
+    setPage(e.page + 1);
+  };
 
-  /*ICON HEADER */
+  /* HEADER ICON */
   const iconHeader = (
     <div ref={iconRef} style={{ display: "flex", justifyContent: "center" }}>
       <i
@@ -104,12 +110,11 @@ const ArtTable = () => {
 
   return (
     <div style={{ margin: 20 }}>
-      {/* INFO OUTSIDE CARD */}
+
       <div style={{ marginBottom: 8, fontWeight: 500 }}>
         Selected: {selectedIds.size} rows
       </div>
 
-      {/* TABLE CARD */}
       <div
         style={{
           border: "1px solid #ddd",
@@ -128,6 +133,7 @@ const ArtTable = () => {
           first={(page - 1) * ROWS_PER_PAGE}
           loading={loading}
           dataKey="id"
+          selectionMode="multiple"
           selection={selectedRows}
           onSelectionChange={onSelectionChange}
           onPage={onPageChange}
@@ -135,7 +141,7 @@ const ArtTable = () => {
           paginatorLeft={paginatorLeft}
           paginatorTemplate={{
             layout: "PrevPageLink PageLinks NextPageLink",
-            PrevPageLink: (options) => (
+            PrevPageLink: (options: any) => (
               <button
                 className="p-link"
                 onClick={options.onClick}
@@ -144,7 +150,7 @@ const ArtTable = () => {
                 Previous
               </button>
             ),
-            NextPageLink: (options) => (
+            NextPageLink: (options: any) => (
               <button
                 className="p-link"
                 onClick={options.onClick}
